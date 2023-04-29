@@ -1,13 +1,11 @@
 const express = require('express');
 require('dotenv').config();
 const path = require('path');
-console.log(process.env);
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const app = express();
 
 // 静的ファイルの提供
 app.use(express.static(path.join(__dirname, 'public')));
-console.log(process.env.MONGODB_URI);
 
 const mongoose = require('mongoose');
 
@@ -51,6 +49,7 @@ mongoose.connect(MONGO_URI, {
   useUnifiedTopology: true
 }).then(() => {
   console.log('Connected to MongoDB');
+  mongoose.set('strictQuery', false);
   app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
 }).catch(err => {
   console.error('Error connecting to MongoDB:', err);
