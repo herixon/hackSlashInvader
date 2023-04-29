@@ -1,11 +1,11 @@
 const express = require('express');
-require('dotenv').config();
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const app = express();
 
 // 静的ファイルの提供
 app.use(express.static(path.join(__dirname, 'public')));
+console.log(process.env.MONGO_URI);
 
 const mongoose = require('mongoose');
 
