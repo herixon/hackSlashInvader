@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const app = express();
+const PORT = 3000;
 
 // 静的ファイルの提供
 app.use(express.static(path.join(__dirname, 'public')));
@@ -41,8 +42,6 @@ app.post('/api/ranking', async (req, res) => {
   res.sendStatus(201);
 });
 
-const PORT = process.env.PORT || 3000;
-
 // データベース接続
 mongoose.connect(MONGO_URI, {
   useNewUrlParser: true,
@@ -50,7 +49,7 @@ mongoose.connect(MONGO_URI, {
 }).then(() => {
   console.log('Connected to MongoDB');
   mongoose.set('strictQuery', false);
-  app.listen(PORT, () => console.log(`Server started on port ${PORT}`));
+  app.listen(process.env.PORT || PORT, () => console.log(`Server started on port ${PORT}`));
 }).catch(err => {
   console.error('Error connecting to MongoDB:', err);
 });
