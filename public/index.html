@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Space Invaders</title>
+  <style>
+    canvas {
+      display: block;
+      margin: 0 auto;
+      background-color: black;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <button id="startButton">Start Game</button>
+  <button id="resetButton">Reset Game</button>
+  <div id="rankingContainer">
+    <h2>Top 100 Ranking</h2>
+    <ul id="rankingList"></ul>
+  </div>
+  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+</body>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startButton = document.getElementById('startButton');
+    const resetButton = document.getElementById('resetButton');
+
+let gameStatus = 'stopped';
+let parameterLog = '';
+
+let player = {
+  x: canvas.width / 2 - 45,
+  y: canvas.height - 60,
+  width: 90,
+  height: 20,
+  speed: 3,
+  hp: 4,
+  bulletSpeed: 10,
+  shootInterval: 600,
+};
+
+let enemy = {
+  rows: 5,
+  cols: 11,
+  width: 40,
+  height: 20,
+  gap: 10,
+  speed: 3,
+  shootInterval: 700,
+  bulletSpeed: 3,
+};
+
+let playerBullets = [];
+let enemyBullets = [];
+let enemies = [];
+
+let gameStartTime = new Date().getTime();
+let elapsedTime = 0;
+let playerShootIntervalId;
+let enemyShootIntervalId;
+let accumulatedHp = 0;
+let totalElapsedTime = 0;
+
+startButton.addEventListener('click', () => {
+  if (gameStatus === 'stopped') {
+    gameStatus = 'playing';
+    gameStartTime = new Date().getTime();
+    generateEnemies();
+    startShooting();
+    gameLoop();
+  }
+});
+
+resetButton.addEventListener('click', () => {
+  if (gameStatus === 'playing' || gameStatus === 'gameOver' || gameStatus === 'gameClear') {
+    gameStatus = 'stopped';
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    totalElapsedTime = 0;
+
+    // プレイヤーのパラメータを初期化
+    player = {
+      x: canvas.width / 2 - 45,
+      y: canvas.height - 60,
+      width: 90,
+      height: 20,
+      speed: 3,
+      hp: 4,
+      bulletSpeed: 10,
+      shootInterval: 600,
+    };
+
+    playerBullets = [];
+    enemyBullets = [];
+    enemies = [];
+    clearInterval(playerShootIntervalId);
+    clearInterval(enemyShootIntervalId);
+    generateEnemies();
+  }
+});
+
+function generateEnemies() {
+  enemies = [];
+  for (let i = 0; i < enemy.rows; i++) {
+    for (let j = 0; j < enemy.cols; j++) {
+      let x = j * (enemy.width + enemy.gap);
+      let y = i * (enemy.height + enemy.gap) + 10;
+      enemies.push({ x: x, y: y, width: enemy.width, height: enemy.height });
+    }
+  }
+}
+generateEnemies();
+
+function drawText(text, x, y, color, size) {
+  ctx.fillStyle = color;
+  ctx.font = `${size}px Arial`;
+  ctx.fillText(text, x, y);
+}
+
+function drawPlayer() {
+  ctx.fillStyle = 'white';
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+
+function drawEnemies() {
+  ctx.fillStyle = 'green';
+  for (let e of enemies) {
+    ctx.fillRect(e.x, e.y, e.width, e.height);
+  }
+}
+
+function drawBullets(bullets, color) {
+  ctx.fillStyle = color;
+  for (let b of bullets) {
+    ctx.fillRect(b.x, b.y, 5, 10);
+  }
+}
+
+function drawPlayerParameters() {
+  let parameters = `Width: ${player.width.toFixed(2)}, Speed: ${Math.abs(player.speed)}, HP: ${player.hp}, BulletSpeed: ${player.bulletSpeed}, ShootInterval: ${player.shootInterval.toFixed(2)}`;
+  drawText(parameters, 10, 20, '#ffffff', 14);
+}
+
+function drawParameterLog() {
+  drawText(parameterLog, canvas.width / 2 - 100, canvas.height - 20, '#ffffff', 20);
+}
+
+function drawTimer() {
+  let timeInSeconds = totalElapsedTime / 1000;
+  drawText(`Time: ${timeInSeconds.toFixed(2)}s`, canvas.width - 150, 20, '#ffffff', 14);
+}
+
+function updatePlayer() {
+  player.x += player.speed;
+  if (player.x + player.width > canvas.width || player.x < 0) {
+    player.speed *= -1;
+  }
+}
+
+function updateEnemies() {
+  let reachedRightEdge = false;
+  let reachedLeftEdge = false;
+
+  for (let e of enemies) {
+    e.x += enemy.speed;
+
+    if (e.x + enemy.width > canvas.width) {
+      reachedRightEdge = true;
+    } else if (e.x < 0) {
+      reachedLeftEdge = true;
+    }
+  }
+
+  if (reachedRightEdge || reachedLeftEdge) {
+    enemy.speed *= -1;
+    for (let e of enemies) {
+      e.y += enemy.height;
+      if (e.y + e.height > player.y) {
+        gameOver();
+      }
+    }
+  }
+}
+
+function updateBullets(bullets) {
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    let b = bullets[i];
+    if (b.direction === 'up') {
+      b.y -= player.bulletSpeed;
+    } else {
+      b.y += enemy.bulletSpeed;
+    }
+
+    if (b.y < 0 || b.y > canvas.height) {
+      bullets.splice(i, 1);
+    }
+  }
+}
+
+function shootBullet(shooter, bullets, direction) {
+  let centerX = shooter.x + shooter.width / 2;
+  let bulletY = direction === 'up' ? shooter.y - 10 : shooter.y + shooter.height;
+  bullets.push({ x: centerX  - 2.5, y: bulletY, direction: direction });
+}
+
+function handleCollisions() {
+  for (let i = playerBullets.length - 1; i >= 0; i--) {
+    let pb = playerBullets[i];
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      let e = enemies[j];
+      if (pb.x + 5 > e.x && pb.x < e.x + e.width && pb.y < e.y + e.height && pb.y + 10 > e.y) {
+        enemies.splice(j, 1);
+        playerBullets.splice(i, 1);
+        break;
+      }
+    }
+  }
+
+  for (let i = enemyBullets.length - 1; i >= 0; i--) {
+    let eb = enemyBullets[i];
+    if (eb.x + 5 > player.x && eb.x < player.x + player.width && eb.y < player.y + player.height && eb.y + 10 > player.y) {
+      enemyBullets.splice(i, 1);
+      player.hp--;
+      if (player.hp <= 0) {
+        gameOver();
+      }
+    }
+  }
+}
+
+function gameOver() {
+  gameStatus = 'gameOver';
+  clearInterval(playerShootIntervalId);
+  clearInterval(enemyShootIntervalId);
+  drawText('Game Over!', canvas.width / 2 - 50, canvas.height / 2, '#ffffff', 24);
+}
+
+async function gameClear() {
+  gameStatus = 'gameClear';
+  clearInterval(playerShootIntervalId);
+  clearInterval(enemyShootIntervalId);
+  drawText('Game Clear!', canvas.width / 2 - 50, canvas.height / 2, '#ffffff', 24);
+  drawText(`Clear Time: ${(totalElapsedTime / 1000).toFixed(2)}s`, canvas.width / 2 - 60, canvas.height / 2 + 30, '#ffffff', 24);
+
+  const nickname = prompt('Enter your nickname:');
+  if (nickname) {
+    await submitScore(nickname, totalElapsedTime / 1000);
+  }
+}
+
+function restartGame() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  applyRandomParameterChange();
+  player.hp = 3 + accumulatedHp;
+  gameStartTime = new Date().getTime();
+  generateEnemies();
+  gameStatus = 'playing';
+  startShooting();
+  gameLoop();
+}
+
+function applyRandomParameterChange() {
+  let randomParameter = Math.floor(Math.random() * 5);
+  switch (randomParameter) {
+    case 0:
+      player.width *= 0.75;
+      parameterLog = 'Player Width Down';
+      break;
+    case 1:
+      player.speed = Math.abs(player.speed) + 1;
+      parameterLog = 'Player Speed Up';
+      break;
+    case 2:
+      accumulatedHp += 2;
+      parameterLog = 'Player HP Up';
+      break;
+    case 3:
+      player.bulletSpeed += 4;
+      parameterLog = 'Player Bullet Speed Up';
+      break;
+    case 4:
+      player.shootInterval *= 0.8;
+      parameterLog = 'Player Shoot Interval Down';
+      break;
+  }
+}
+
+function startShooting() {
+  playerShootIntervalId = setInterval(() => {
+    shootBullet(player, playerBullets, 'up');
+  }, player.shootInterval);
+
+  enemyShootIntervalId = setInterval(() => {
+    let randomEnemy = enemies[Math.floor(Math.random() * enemies.length)];
+    if (randomEnemy) {
+      shootBullet(randomEnemy, enemyBullets, 'down');
+    }
+  }, enemy.shootInterval);
+}
+
+startShooting();
+
+function gameLoop() {
+  if (gameStatus === 'playing') {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    elapsedTime = new Date().getTime() - gameStartTime;
+    totalElapsedTime += elapsedTime; // この行を追加
+    gameStartTime = new Date().getTime(); // この行を追加
+
+    updatePlayer();
+    updateEnemies();
+    updateBullets(playerBullets);
+    updateBullets(enemyBullets);
+
+    drawPlayer();
+    drawEnemies();
+    drawBullets(playerBullets, 'white');
+    drawBullets(enemyBullets, 'red');
+
+    drawPlayerParameters();
+    drawParameterLog();
+
+    drawTimer();
+
+    handleCollisions();
+
+    if (enemies.length === 0) {
+      gameClear();
+    } else {
+      requestAnimationFrame(gameLoop);
+    }
+  } else if (gameStatus === 'gameOver' || gameStatus === 'gameClear') {
+    setTimeout(restartGame, 3000);
+  }
+}
+
+gameLoop();
+
+async function submitScore(nickname, time) {
+  try {
+    const response = await axios.post('/ranking', {
+      nickname: nickname,
+      time: time
+    });
+    console.log(response.data);
+  } catch (error) {
+    console.error(error);
+  }
+}
+async function submitScore(nickname, time) {
+      try {
+        const response = await axios.post('/api/ranking', {
+          nickname: nickname,
+          time: time
+        });
+        console.log(response.data);
+        await displayRanking();
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function displayRanking() {
+      try {
+        const response = await axios.get('/api/ranking');
+        const rankingList = response.data;
+        const rankingListElement = document.getElementById('rankingList');
+        rankingListElement.innerHTML = '';
+        rankingList.forEach((entry, index) => {
+          const li = document.createElement('li');
+          li.textContent = `${index + 1}. ${entry.nickname} - ${entry.time.toFixed(2)}s`;
+          rankingListElement.appendChild(li);
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    displayRanking();
+  </script>
+</body>
+</html>
