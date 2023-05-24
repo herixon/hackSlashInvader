@@ -245,12 +245,27 @@ async function gameClear() {
   drawText('Game Clear!', canvas.width / 2 - 50, canvas.height / 2, '#ffffff', 24);
   drawText(`Clear Time: ${(totalElapsedTime / 1000).toFixed(2)}s`, canvas.width / 2 - 60, canvas.height / 2 + 30, '#ffffff', 24);
 
-  const nickname = prompt('Enter your nickname:');
+  let nickname = prompt('Enter your nickname:');
   if (nickname) {
+    // エスケープ処理
+    nickname = escapeHTML(nickname);
     await submitScore(nickname, totalElapsedTime / 1000);
   }
 }
 
+// HTMLエスケープ処理関数
+function escapeHTML(str){
+    str.replace(/[&'`"<>]/g, function(match) {
+        return {
+            '&': '&amp;',
+            "'": '&#x27;',
+            '`': '&#x60;',
+            '"': '&quot;',
+            '<': '&lt;',
+            '>': '&gt;',
+        }[match]
+    });
+}
 function restartGame() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   applyRandomParameterChange();
